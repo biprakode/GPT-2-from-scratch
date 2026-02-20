@@ -4,27 +4,31 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import Optional
-from torch import FloatTensor, LongTensor, Tensor
+from torch import Tensor
+
+from model.ModelConfig import ModelConfig
+from model.TrainingConfig import TrainingConfig
+
 
 class MultiHeadAttention(nn.Module):
-    def __init__(self , d_in, d_out, context_length, dropout, num_heads:int):
+    def __init__(self, config: ModelConfig, train_config: TrainingConfig):
         super().__init__()
-        assert d_out % num_heads == 0, "d_out must be divisible by num_heads"
+        assert config.n_embd % config.n_head == 0, "n_embd must be divisible by n_head"
 
-        self.d_out = d_out
-        self.d_in = d_in
-        self.num_heads = num_heads
-        self.head_dim = d_out // num_heads
+        self.n_embd = config.n_embd
+        self.num_heads = config.n_head
+        self.head_dim = config.n_embd // config.n_head
 
-        self.W_Q = nn.Linear(d_in , d_out)
-        self.W_K = nn.Linear(d_in , d_out)
-        self.W_V = nn.Linear(d_in , d_out)
+        self.W_Q = nn.Linear(config.n_embd, config.n_embd)
+        self.W_K = nn.Linear(config.n_embd, config.n_embd)
+        self.W_V = nn.Linear(config.n_embd, config.n_embd)
 
-        self.final_linear = nn.Linear(d_out , d_out)
-        self.dropout = nn.Dropout(dropout)
+        self.final_linear = nn.Linear(config.n_embd, config.n_embd)
+        self.attn_dropout = nn.Dropout(train_config.attn_pdrop)
+        self.resid_dropout = nn.Dropout(train_config.resid_pdrop)
 
-        mask = torch.tril(torch.ones(context_length , context_length))
-        mask = mask.view(1, 1, context_length, context_length)
+        mask = torch.tril(torch.ones(config.block_size, config.block_size))
+        mask = mask.view(1, 1, config.block_size, config.block_size)
         mask = mask.masked_fill(mask == 0, float('-inf'))
         mask = mask.masked_fill(mask == 1, 0.0)
         self.register_buffer('mask', mask)
@@ -33,9 +37,9 @@ class MultiHeadAttention(nn.Module):
         batch_size , seq_length , n_embd = x.shape
         return x.view(batch_size, seq_length, self.num_heads, self.head_dim).transpose(1, 2)
 
-    def _merge_heads(self , x:Tensor) -> Tensor:
+    def _merge_heads(self, x: Tensor) -> Tensor:
         batch, n_head, seq_len, head_dim = x.shape
-        return x.transpose(1, 2).contiguous().view(batch, seq_len, self.d_out)
+        return x.transpose(1, 2).contiguous().view(batch, seq_len, self.n_embd)
 
     def _attn(self , q:Tensor , k:Tensor , v:Tensor , mask:Optional[Tensor] = None) -> Tensor:
         attn_score = torch.matmul(q , k.transpose(-2 , -1)) / math.sqrt(self.head_dim)
@@ -43,8 +47,8 @@ class MultiHeadAttention(nn.Module):
         if mask is not None:
             attn_score += mask # no attention to prev tokens
 
-        attn_probs = F.softmax(attn_score , dim = -1)
-        attn_probs = self.dropout(attn_probs)
+        attn_probs = F.softmax(attn_score, dim=-1)
+        attn_probs = self.attn_dropout(attn_probs)
         return torch.matmul(attn_probs , v) #
 
     def forward(self, x:Tensor) -> Tensor:
@@ -58,5 +62,5 @@ class MultiHeadAttention(nn.Module):
         attn_probs = self._attn(q , k , v , curr_mask)
         out = self._merge_heads(attn_probs)
         final_out = self.final_linear(out)
-        return self.dropout(final_out)
+        return self.resid_dropout(final_out)
 
