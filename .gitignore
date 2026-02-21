@@ -1,0 +1,20 @@
+# Data files (too large)
+data/raw/*.txt
+data/tokenized/*.bin
+
+# Model checkpoints (too large)
+checkpoints/*.pt
+*.pth
+*.ckpt
+
+# s
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Environment
+.env
+venv/
