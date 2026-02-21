@@ -14,7 +14,7 @@ def main():
                         help='Path to training corpus')
     parser.add_argument('--num-merges', type=int, default=50000,
                         help='Number of BPE merges')
-    parser.add_argument('--max-chars', type=int, default=100_000_000,
+    parser.add_argument('--max-chars', type=int, default=1000_000_000,
                         help='Max characters to read from corpus')
     parser.add_argument('--vocab-out', type=str, default='data/vocab/my_vocab.json')
     parser.add_argument('--merges-out', type=str, default='data/vocab/my_merges.txt')
@@ -24,7 +24,7 @@ def main():
 
     print(f"Reading corpus from {args.corpus}...")
     with open(args.corpus, 'r') as f:
-        corpus = f.read() # read everything
+        corpus = f.read(args.max_chars)
     corpus = corpus.replace('\n', ' ')
     print(f"Corpus size: {len(corpus):,} characters")
 
