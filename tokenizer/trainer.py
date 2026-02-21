@@ -5,7 +5,6 @@ from tokenizer.bpe import BPETokenizer, WORD_PATTERN, get_byte_encoder, get_pair
 
 
 class BPE_Trainer:
-
     def __init__(self, num_merges: int = 50000):
         self.num_merges = num_merges
         self.byte_encoder = get_byte_encoder()
@@ -75,7 +74,7 @@ class BPE_Trainer:
         print(f"Training complete. Vocab size: {len(vocab)}, Merges: {len(merges)}")
         return tokenizer
 
-    def save(self , tokenizer: BPETokenizer, vocab_file: str, merge_file: str):
+    def save(self , tokenizer: BPETokenizer, vocab_file: str = 'data/vocab/my_vocab.json', merge_file: str = 'data/vocab/my_merges.txt'):
         out_vocab = {token: idx for idx, token in tokenizer.vocab.items()}
         with open(vocab_file, 'w') as f:
             json.dump(out_vocab, f, ensure_ascii=False)
