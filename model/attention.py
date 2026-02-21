@@ -45,7 +45,7 @@ class MultiHeadAttention(nn.Module):
         attn_score = torch.matmul(q , k.transpose(-2 , -1)) / math.sqrt(self.head_dim)
 
         if mask is not None:
-            attn_score += mask # no attention to prev tokens
+            attn_score += mask # no attention to masked tokens
 
         attn_probs = F.softmax(attn_score, dim=-1)
         attn_probs = self.attn_dropout(attn_probs)

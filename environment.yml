@@ -1,0 +1,19 @@
+name: gpt-2
+channels:
+  - conda-forge
+  - pytorch
+  - defaults
+dependencies:
+  - python=3.10
+  - numpy
+  - pytorch
+  - pip
+  - tqdm
+  - ipykernel
+  - cpuonly
+  - pip:
+      - transformers
+      - datasets
+      - wandb
+
+  - torch

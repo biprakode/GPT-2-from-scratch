@@ -1,11 +1,11 @@
 import json
 from collections import Counter
+from tqdm import tqdm
 
 from tokenizer.bpe import BPETokenizer, WORD_PATTERN, get_byte_encoder, get_pairs, byte_encode_word
 
 
 class BPE_Trainer:
-
     def __init__(self, num_merges: int = 50000):
         self.num_merges = num_merges
         self.byte_encoder = get_byte_encoder()
@@ -21,7 +21,7 @@ class BPE_Trainer:
         merges = []
         bpe_ranks = {}
 
-        for rank in range(self.num_merges):
+        for rank in tqdm(range(self.num_merges), desc="BPE merges"):
             # Count all adjacent pairs across the vocabulary
             pair_counts = Counter()
             for word, freq in word_freqs.items():
@@ -46,9 +46,6 @@ class BPE_Trainer:
                 new_word = word.replace(bigram_str, merged_str)
                 new_word_freqs[new_word] = freq
             word_freqs = new_word_freqs
-
-            if rank % 1000 == 0:
-                print(f"Merge {rank}/{self.num_merges}: {best_pair}")
 
         # Build vocab: 256 base byte chars + one new token per merge
         inverse_vocab = {}  # token -> id
@@ -75,7 +72,7 @@ class BPE_Trainer:
         print(f"Training complete. Vocab size: {len(vocab)}, Merges: {len(merges)}")
         return tokenizer
 
-    def save(self , tokenizer: BPETokenizer, vocab_file: str, merge_file: str):
+    def save(self , tokenizer: BPETokenizer, vocab_file: str = 'data/vocab/my_vocab.json', merge_file: str = 'data/vocab/my_merges.txt'):
         out_vocab = {token: idx for idx, token in tokenizer.vocab.items()}
         with open(vocab_file, 'w') as f:
             json.dump(out_vocab, f, ensure_ascii=False)

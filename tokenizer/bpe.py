@@ -101,7 +101,7 @@ class BPETokenizer:
         return word
 
     def encode(self, text: str) -> list[int]:
-        # 1. Split raw text into words FIRST
+        # 1. Split raw text into words
         # 2. Byte-encode each word separately
         # 3. Apply BPE merges to each byte-encoded word
         words = WORD_PATTERN.findall(text)
