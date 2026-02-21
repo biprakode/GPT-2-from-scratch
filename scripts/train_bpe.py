@@ -24,7 +24,7 @@ def main():
 
     print(f"Reading corpus from {args.corpus}...")
     with open(args.corpus, 'r') as f:
-        corpus = f.read(args.max_chars)
+        corpus = f.read() # read everything
     corpus = corpus.replace('\n', ' ')
     print(f"Corpus size: {len(corpus):,} characters")
 
