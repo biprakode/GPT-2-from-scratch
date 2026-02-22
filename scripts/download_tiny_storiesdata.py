@@ -15,4 +15,4 @@ with open('data/raw/tinystories_val.txt', 'w') as f:
     for example in dataset['validation']:
         f.write(example['text'] + '\n')
 
-print("Done.")
+print("Tiny stories done.")
