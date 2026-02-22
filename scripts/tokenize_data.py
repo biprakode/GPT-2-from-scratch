@@ -7,7 +7,7 @@ import pandas as pd
 import numpy as np
 from tokenizer.bpe import BPETokenizer
 
-def tokenize_openwebtext(tokenizer, output_file, data_dir="data/raw"):
+def tokenize_openwebtext(tokenizer, data_dir="data/raw"):
     all_tokens = []
     files = sorted(Path(data_dir).glob("*.parquet"))
 
@@ -27,9 +27,14 @@ def tokenize_openwebtext(tokenizer, output_file, data_dir="data/raw"):
                 print(f"    Processed {idx} docs, {len(all_tokens)} tokens so far")
 
     print(f"\nTotal tokens before saving: {len(all_tokens)}")
-    ids = np.array(all_tokens, dtype=np.uint16)
-    ids.tofile(output_file)
-    print(f"Wrote {len(ids)} tokens to {output_file}")
+    all_tokens = np.array(all_tokens , dtype=np.uint16)
+    split_idx = int(len(all_tokens) * 0.9)
+    train , val = all_tokens[:split_idx], all_tokens[split_idx:]
+    train.tofile("data/tokenized/train.bin")
+    val.tofile("data/tokenized/val.bin")
+    print(f"Train tokens: {len(train)}")
+    print(f"Val tokens: {len(val)}")
+
 
 tokenizer = BPETokenizer()
 tokenizer.load_vocab_merges("/run/media/biprarshi/COMMON/files/AI/MyGPT-2/data/vocab/vocab.json", "/run/media/biprarshi/COMMON/files/AI/MyGPT-2/data/vocab/merges.txt")
@@ -37,5 +42,6 @@ tokenizer.load_vocab_merges("/run/media/biprarshi/COMMON/files/AI/MyGPT-2/data/v
 tokenize_openwebtext(
     data_dir='data/raw',
     tokenizer= tokenizer,
-    output_file='data/tokenized/test.bin'
+    output_file='data/tokenized/raw.bin'
 )
+

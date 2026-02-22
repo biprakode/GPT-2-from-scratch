@@ -1,4 +1,5 @@
 import torch
+from torch.utils.data import Dataset , DataLoader
 from tqdm import tqdm
 
 from tokenizer.bpe import BPETokenizer
@@ -7,8 +8,9 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 
-class TextDataset:
+class TextDataset(Dataset):
     def __init__(self , data_path:str, block_size:int = 1024):
+        super().__init__()
         self.data_path = data_path
         self.data = np.memmap(self.data_path, dtype=np.uint16, mode='r')
         self.block_size = block_size

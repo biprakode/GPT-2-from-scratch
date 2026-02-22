@@ -1,5 +1,3 @@
-from xmlrpc.client import INVALID_METHOD_PARAMS
-
 import torch
 from torch import nn
 from model.ModelConfig import ModelConfig
@@ -24,12 +22,15 @@ class GPT2(nn.Module):
 
         self.wte.weight = self.lm_head.weight # weight tying (token -> vector -> token)
 
+        self.config = modelconfig
+        self.apply(self._init_weights)
+
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):
             std = 0.02
             if hasattr(module , 'c_proj') or hasattr(module , 'final_linear'):
                 std *= (2 * self.config.n_layer) ** -0.5
-            nn.init.normal_(module.weight, mean=0, std=0.02)
+            nn.init.normal_(module.weight, mean=0, std=std)
             if module.bias is not None:
                 nn.init.zeros_(module.bias)
         elif isinstance(module, nn.Embedding):
