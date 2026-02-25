@@ -8,7 +8,7 @@ from training.scheduler import CosineAnnealingScheduler
 from training.loss import compute_loss
 
 class Trainer:
-    def __init__(self , model , train_loader:DataLoader , validation_loader:DataLoader, scheduler:CosineAnnealingScheduler , train_config:TrainingConfig , optimizer = None, loss = None, device='cpu', use_amp=False):
+    def __init__(self , model , train_loader:DataLoader , validation_loader:DataLoader, scheduler:CosineAnnealingScheduler , train_config:TrainingConfig , optimizer = None, loss = None, device='cpu' , use_amp=False):
         self.model = model
         self.train_loader = train_loader
         self.validation_loader = validation_loader
@@ -19,11 +19,17 @@ class Trainer:
         self.device = device
         self.use_amp = use_amp and device != 'cpu'
         self.scaler = GradScaler() if self.use_amp else None
+        self.DP = True if torch.cuda.device_count() > 1 else False
+        if self.DP:
+            self.model = torch.nn.DataParallel(self.model)
 
     def train(self , num_epochs , checkpoint_dir ):
         import os
         os.makedirs(checkpoint_dir, exist_ok=True)
         best_val_loss = float('inf')
+
+        epochs_without_improvement = 0
+        early_stop = False
 
         for epoch in range(num_epochs):
             print(f"\n{'='*50}")
@@ -42,13 +48,22 @@ class Trainer:
             checkpoint_path = os.path.join(checkpoint_dir, f'checkpoint_epoch_{epoch}.pt')
             self.save_checkpoint(epoch, val_loss, checkpoint_path)
 
-            if val_loss < best_val_loss:
+            if val_loss < (best_val_loss - self.train_config.min_delta):
                 best_val_loss = val_loss
                 best_path = os.path.join(checkpoint_dir, 'best_model.pt')
                 self.save_checkpoint(epoch, val_loss, best_path)
                 print(f"New best model! Val loss: {val_loss:.4f}")
+                epochs_without_improvement = 0
+            else:
+                epochs_without_improvement += 1
+                print(f"No improvement for {epochs_without_improvement} epoch(s).")
+            if epochs_without_improvement >= self.train_config.patience:
+                print(f"\nEarly stopping triggered! No improvement for {self.train_config.patience} consecutive epochs.")
+                early_stop = True
+                break
 
         print("\nTraining complete!")
+
         return best_val_loss
 
     def train_epoch(self , epoch):
@@ -112,9 +127,13 @@ class Trainer:
         }
 
     def save_checkpoint(self , epoch , val_loss , filepath : str):
+        if self.DP:
+            model_state_dict = self.model.module.state_dict()
+        else:
+            model_state_dict = self.model.state_dict()
         checkpoint = {
             'epoch' : epoch,
-            'model_state_dict' : self.model.state_dict(),
+            'model_state_dict' : model_state_dict,
             'optimizer_state_dict' : self.optimizer.state_dict(),
             'scheduler_state_dict' : self.scheduler.state_dict(),
             'val_loss' : val_loss,
@@ -125,7 +144,13 @@ class Trainer:
 
     def load_checkpoint(self , filepath : str):
         checkpoint = torch.load(filepath, weights_only=False)
-        self.model.load_state_dict(checkpoint['model_state_dict'])
+
+
+        if self.DP:
+            self.model.module.load_state_dict(checkpoint['model_state_dict'])
+        else:
+            self.model.load_state_dict(checkpoint['model_state_dict'])
+
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
         start_epoch = checkpoint['epoch'] + 1

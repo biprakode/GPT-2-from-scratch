@@ -25,3 +25,6 @@ class TransformerBlock(nn.Module):
         ffn_out = self.mlp(normalized)
 
         return x+ffn_out
+
+    def reset_cache(self):
+        self.attn.reset_cache()

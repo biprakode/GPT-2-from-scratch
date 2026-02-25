@@ -89,5 +89,5 @@ class MultiHeadAttention(nn.Module):
 
     def reset_cache(self):
         self.cache_k, self.cache_v = None, None
-        self.ptr_current_pos = 0
+        self.current_pos = 0
 

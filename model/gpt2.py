@@ -73,7 +73,7 @@ class GPT2(nn.Module):
         with torch.no_grad():
             logits = self.forward(generated , use_cache=True)
             last_logit = logits[:, -1, :] # (batch , vocab_size)
-            new_token = self._sample(last_logit , temperature=temperature, top_k=top_k, top_p=top_p)
+            new_token = self._sample(last_logit , temperature=temperature, top_k=top_k, top_p=top_p , prev_tokens=generated)
             generated = torch.cat([generated , new_token], dim = 1)
 
             if self.eos_token_id is not None and (new_token == self.eos_token_id).all():
@@ -82,8 +82,8 @@ class GPT2(nn.Module):
             for _ in range(max_new_tokens-1):
                 logits = self.forward(new_token , use_cache=True)
                 last_logit = logits[:, -1, :]
-                new_token = self._sample(last_logit, temperature=temperature, top_k=top_k, top_p=top_p)
-                generated = torch.cat([generated , new_token], dim = -1)
+                new_token = self._sample(last_logit, temperature=temperature, top_k=top_k, top_p=top_p , prev_tokens=generated)
+                generated = torch.cat([generated , new_token], dim = 1)
 
                 if self.eos_token_id is not None and (new_token == self.eos_token_id).all():
                     break
@@ -92,7 +92,13 @@ class GPT2(nn.Module):
 
         pass
 
-    def _sample(self , logits , temperature , top_k , top_p):
+    def _sample(self , logits , temperature , top_k , top_p , prev_tokens , repetition_penalty=1.2):
+        if repetition_penalty != 1.0 and prev_tokens is not None:
+            for i in range(logits.shape[0]):
+                prev_token_ids = torch.unique(prev_tokens[i])
+                score = logits[i , prev_token_ids] # logits of prev tokens
+                logits[i , prev_token_ids] = torch.where(score > 0 , score / repetition_penalty , score * repetition_penalty)
+
         logits = logits / temperature
 
         #topK filtering
@@ -101,14 +107,20 @@ class GPT2(nn.Module):
             # torch.topk returns (values, indices) sorted descending
             # [0] gets values, [..., -1, None] gets last (k-th) value and adds dimension
             to_remove = logits < torch.topk(logits , top_k)[0][..., -1 , None]
-            logits[to_remove] = -float('-inf')
+            logits[to_remove] = float('-inf')
 
         #topP sampling
         if top_p is not None:
             sorted_logits, sorted_indices = torch.sort(logits , descending = True) # sorted_indices: (batch, vocab_size) - original positions of sorted logits
             sorted_probs = F.softmax(sorted_logits , dim = -1) # Convert sorted logits to probabilities
-            cumulative_probs = torch.cumsum(F.softmax(sorted_probs , dim = -1) , dim = -1) # cumulative_probs[i] = sum of top (i+1) probabilities
+            cumulative_probs = torch.cumsum(sorted_probs ,dim = -1) # cumulative_probs[i] = sum of top (i+1) probabilities
             sorted_ind_to_remove = cumulative_probs > top_p
+
+            # Shift mask right by 1 to keep at least the top token
+            # (Even if top token alone exceeds p, we keep it)
+            sorted_ind_to_remove[..., 1:] = sorted_ind_to_remove[..., :-1].clone()
+            sorted_ind_to_remove[..., 0] = False  # Always keep the top token
+
             # Unsort the mask back to original logit positions
             # scatter: put sorted mask values back to original positions
             ind_to_remove = sorted_ind_to_remove.scatter(1 , sorted_indices , sorted_ind_to_remove)
