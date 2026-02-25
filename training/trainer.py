@@ -100,6 +100,11 @@ class Trainer:
                 print(f"Epoch {epoch}, Step {batch_idx}: "
                       f"Loss={loss_value.item():.4f}, LR={current_lr:.6f}")
 
+            if batch_idx % 1000 == 0 and batch_idx > 0:
+                checkpoint_path = f'/kaggle/working/checkpoints/step_checkpoint{epoch}_{batch_idx}.pt'
+                self.save_checkpoint(epoch, 0.0, checkpoint_path)
+                print(f"Saved step {batch_idx}")
+
         avg_loss = total_loss / len(self.train_loader)
         return avg_loss
 
