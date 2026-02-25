@@ -9,6 +9,7 @@ from model.layernorm import LayerNorm
 from model.feedforward import FeedForward
 from model.block import TransformerBlock
 from torch import Tensor
+import torch.nn.functional as F
 
 class GPT2(nn.Module):
     def __init__(self , modelconfig:ModelConfig , trainingconfig:TrainingConfig):
@@ -25,24 +26,28 @@ class GPT2(nn.Module):
         self.config = modelconfig
         self.apply(self._init_weights)
 
+        self._cache_initialized = False
+        self.eos_token_id = 50256
+
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):
-            std = 0.02
-            if hasattr(module , 'c_proj') or hasattr(module , 'final_linear'):
-                std *= (2 * self.config.n_layer) ** -0.5
-            nn.init.normal_(module.weight, mean=0, std=std)
+            nn.init.normal_(module.weight, mean=0.0, std=0.02)
             if module.bias is not None:
                 nn.init.zeros_(module.bias)
         elif isinstance(module, nn.Embedding):
-            nn.init.normal_(module.weight, mean=0, std=0.02)
+            nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
 
-    def forward(self , input_ids , position_ids , past_key_values=None , use_cache=False):
+    def forward(self , input_ids , position_ids=None , past_key_values=None , use_cache=False):
         batch_size , seq_len = input_ids.size()
-        if position_ids is None:
-            position_ids = torch.arange(0, seq_len, dtype=torch.long)
+
+        if position_ids is None: # continue position from where left off
+            if use_cache and self._cache_initialized:
+                start_pos = self.h[0].attn.current_pos # first layer position
+                position_ids = torch.arange(start_pos , start_pos + seq_len , dtype=torch.long, device=input_ids.device)
+            else:
+                position_ids = torch.arange(0, seq_len, dtype=torch.long , device=input_ids.device)
             position_ids = position_ids.unsqueeze(0)  # (1, seq_len)
-            position_ids = position_ids.to(input_ids.device)
 
         token_emb = self.wte(input_ids)
         pos_emb = self.wpe(position_ids)
@@ -50,13 +55,73 @@ class GPT2(nn.Module):
         hidden_state = token_emb + pos_emb
         hidden_state = self.drop(hidden_state)
         for block in self.h:
-            hidden_state = block(hidden_state)
+            hidden_state = block(hidden_state , use_cache=use_cache)
 
         hidden = self.ln_f(hidden_state)
         logits = self.lm_head(hidden) # batch , seq_len , vocab_size
+        if use_cache:
+            self._cache_initialized = True
+
         return logits
 
-    def generate(self):
+    def generate(self , prompt_ids , max_new_tokens=50 , temperature=1.0 , top_k=None , top_p=.9):
+        self.eval()
+        self.reset_cache()
+        device = next(self.parameters()).device
+        prompt_ids = prompt_ids.to(device)
+        generated = prompt_ids.clone()
+        with torch.no_grad():
+            logits = self.forward(generated , use_cache=True)
+            last_logit = logits[:, -1, :] # (batch , vocab_size)
+            new_token = self._sample(last_logit , temperature=temperature, top_k=top_k, top_p=top_p)
+            generated = torch.cat([generated , new_token], dim = 1)
+
+            if self.eos_token_id is not None and (new_token == self.eos_token_id).all():
+                return generated
+
+            for _ in range(max_new_tokens-1):
+                logits = self.forward(new_token , use_cache=True)
+                last_logit = logits[:, -1, :]
+                new_token = self._sample(last_logit, temperature=temperature, top_k=top_k, top_p=top_p)
+                generated = torch.cat([generated , new_token], dim = -1)
+
+                if self.eos_token_id is not None and (new_token == self.eos_token_id).all():
+                    break
+
+        return generated
+
         pass
+
+    def _sample(self , logits , temperature , top_k , top_p):
+        logits = logits / temperature
+
+        #topK filtering
+        if top_k is not None:
+            top_k = min(top_k , logits.size(-1))
+            # torch.topk returns (values, indices) sorted descending
+            # [0] gets values, [..., -1, None] gets last (k-th) value and adds dimension
+            to_remove = logits < torch.topk(logits , top_k)[0][..., -1 , None]
+            logits[to_remove] = -float('-inf')
+
+        #topP sampling
+        if top_p is not None:
+            sorted_logits, sorted_indices = torch.sort(logits , descending = True) # sorted_indices: (batch, vocab_size) - original positions of sorted logits
+            sorted_probs = F.softmax(sorted_logits , dim = -1) # Convert sorted logits to probabilities
+            cumulative_probs = torch.cumsum(F.softmax(sorted_probs , dim = -1) , dim = -1) # cumulative_probs[i] = sum of top (i+1) probabilities
+            sorted_ind_to_remove = cumulative_probs > top_p
+            # Unsort the mask back to original logit positions
+            # scatter: put sorted mask values back to original positions
+            ind_to_remove = sorted_ind_to_remove.scatter(1 , sorted_indices , sorted_ind_to_remove)
+            logits[ind_to_remove] = -float('inf')
+
+        probs = F.softmax(logits , dim = -1)
+        next_token = torch.multinomial(probs , 1)
+        return next_token
+
+
+    def reset_cache(self):
+        for block in self.h:
+            block.reset_cache()
+        self._cache_initialized = False
 
 

@@ -15,9 +15,9 @@ class TransformerBlock(nn.Module):
         self.ln2 = LayerNorm(modelconfig)
         self.mlp = FeedForward(modelconfig , trainconfig)
 
-    def forward(self, x):
+    def forward(self, x , use_cache=False):
         normalized = self.ln1(x)
-        attended = self.attn(normalized)
+        attended = self.attn(normalized , use_cache=use_cache)
 
         x  = x+attended # residual
 

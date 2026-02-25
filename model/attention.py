@@ -33,6 +33,10 @@ class MultiHeadAttention(nn.Module):
         mask = mask.masked_fill(mask == 1, 0.0)
         self.register_buffer('mask', mask)
 
+        self.register_buffer('cache_k' , None , persistent=False)
+        self.register_buffer('cache_v' , None , persistent=False)
+        self.current_pos = 0
+
     def _split_heads(self , x:Tensor) -> Tensor:
         batch_size , seq_length , n_embd = x.shape
         return x.view(batch_size, seq_length, self.num_heads, self.head_dim).transpose(1, 2)
@@ -51,16 +55,39 @@ class MultiHeadAttention(nn.Module):
         attn_probs = self.attn_dropout(attn_probs)
         return torch.matmul(attn_probs , v) #
 
-    def forward(self, x:Tensor) -> Tensor:
+    def forward(self, x:Tensor , use_cache = False) -> Tensor:
         b, num_tokens, d_in = x.shape
 
         q = self._split_heads(self.W_Q(x))
         k = self._split_heads(self.W_K(x))
         v = self._split_heads(self.W_V(x))
 
-        curr_mask = self.mask[:, :, :num_tokens, :num_tokens]
+        if use_cache:
+            if self.cache_k is None:
+                self.cache_k , self.cache_v = k, v
+                start_pos = 0
+                self.current_pos = num_tokens
+            else:
+                start_pos = self.current_pos
+                self.cache_k = torch.cat([self.cache_k , k] , dim = 2)
+                self.cache_v = torch.cat([self.cache_v , v] , dim = 2)
+                self.current_pos += num_tokens
+
+            k , v = self.cache_k, self.cache_v
+
+        if use_cache:
+            seq_len_k = self.cache_k.size(2)
+            curr_mask = self.mask[: , : , start_pos:self.current_pos , : seq_len_k] # extracting relevant mask
+        else:
+            curr_mask = self.mask[:, :, :num_tokens, :num_tokens]
+
         attn_probs = self._attn(q , k , v , curr_mask)
         out = self._merge_heads(attn_probs)
         final_out = self.final_linear(out)
+
         return self.resid_dropout(final_out)
+
+    def reset_cache(self):
+        self.cache_k, self.cache_v = None, None
+        self.ptr_current_pos = 0
 
