@@ -32,4 +32,8 @@ class CosineAnnealingScheduler(_LRScheduler):
             param_group['lr'] = new_lr
         self.current_step += 1
 
+    def state_dict(self):
+        return {'current_step': self.current_step}
 
+    def load_state_dict(self, state_dict):
+        self.current_step = state_dict['current_step']

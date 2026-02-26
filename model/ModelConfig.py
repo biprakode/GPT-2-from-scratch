@@ -4,5 +4,5 @@ class ModelConfig:
     n_head = 12
     block_size = 1024
     vocab_size = 50257
-    eps = 1e-12
+    eps = 1e-5
     embd_pdrop = 0.1

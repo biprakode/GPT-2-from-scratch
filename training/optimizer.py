@@ -15,6 +15,6 @@ def configure_optimizer(model : GPT2, lr=5e-5, weight_decay=0.01):
     optimizer = AdamW([
         {'params': decay_params, 'weight_decay': weight_decay},
         {'params': not_decay_params, 'weight_decay': 0.0}
-    ], lr=lr, betas=(0.9, 0.999), eps=1e-8)
+    ], lr=lr, betas=(0.9, 0.95), eps=1e-8)
 
     return optimizer

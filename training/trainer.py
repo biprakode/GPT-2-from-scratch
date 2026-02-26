@@ -8,7 +8,7 @@ from training.scheduler import CosineAnnealingScheduler
 from training.loss import compute_loss
 
 class Trainer:
-    def __init__(self , model , train_loader:DataLoader , validation_loader:DataLoader, scheduler:CosineAnnealingScheduler , train_config:TrainingConfig , optimizer = None, loss = None, device='cpu' , use_amp=False):
+    def __init__(self , model , train_loader:DataLoader , validation_loader:DataLoader, scheduler:CosineAnnealingScheduler , train_config:TrainingConfig , optimizer = None, loss = None, device='cpu' , use_amp=False, accumulation_steps=1):
         self.model = model
         self.train_loader = train_loader
         self.validation_loader = validation_loader
@@ -19,6 +19,7 @@ class Trainer:
         self.device = device
         self.use_amp = use_amp and device != 'cpu'
         self.scaler = GradScaler() if self.use_amp else None
+        self.accumulation_steps = accumulation_steps
         self.DP = True if torch.cuda.device_count() > 1 else False
         if self.DP:
             self.model = torch.nn.DataParallel(self.model)
@@ -78,27 +79,32 @@ class Trainer:
                 with autocast(device_type='cuda'):
                     logits = self.model(input_ids, position_ids=None)
                     loss_value = self.loss_fn(logits, labels)
+                    loss_value = loss_value / self.accumulation_steps
                 self.scaler.scale(loss_value).backward()
-                self.scaler.unscale_(self.optimizer)
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
-                self.scaler.step(self.optimizer)
-                self.scaler.update()
             else:
                 logits = self.model(input_ids, position_ids=None)
                 loss_value = self.loss_fn(logits, labels)
+                loss_value = loss_value / self.accumulation_steps
                 loss_value.backward()
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
-                self.optimizer.step()
 
-            self.optimizer.zero_grad()
-            self.scheduler.step()
+            if (batch_idx + 1) % self.accumulation_steps == 0:
+                if self.use_amp:
+                    self.scaler.unscale_(self.optimizer)
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+                    self.scaler.step(self.optimizer)
+                    self.scaler.update()
+                else:
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+                    self.optimizer.step()
+                self.optimizer.zero_grad()
+                self.scheduler.step()
 
-            total_loss += loss_value.item()
+            total_loss += loss_value.item() * self.accumulation_steps
 
             if batch_idx % 100 == 0:
                 current_lr = self.optimizer.param_groups[0]['lr']
                 print(f"Epoch {epoch}, Step {batch_idx}: "
-                      f"Loss={loss_value.item():.4f}, LR={current_lr:.6f}")
+                      f"Loss={loss_value.item() * self.accumulation_steps:.4f}, LR={current_lr:.6f}")
 
             if batch_idx % 1000 == 0 and batch_idx > 0:
                 checkpoint_path = f'/kaggle/working/checkpoints/step_checkpoint.pt'
@@ -149,7 +155,6 @@ class Trainer:
 
     def load_checkpoint(self , filepath : str):
         checkpoint = torch.load(filepath, weights_only=False)
-
 
         if self.DP:
             self.model.module.load_state_dict(checkpoint['model_state_dict'])
