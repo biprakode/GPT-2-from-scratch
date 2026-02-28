@@ -18,3 +18,4 @@ dependencies:
       - wandb
 
   - torch
+  - scikit-learn
