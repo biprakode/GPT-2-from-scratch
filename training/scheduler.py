@@ -33,7 +33,18 @@ class CosineAnnealingScheduler(_LRScheduler):
         self.current_step += 1
 
     def state_dict(self):
-        return {'current_step': self.current_step}
+        return {
+            'current_step': self.current_step,
+            'warmup_steps': self.warmup_steps,
+            'total_steps': self.total_steps,
+            'max_lr': self.max_lr,
+            'min_lr': self.min_lr,
+        }
 
     def load_state_dict(self, state_dict):
         self.current_step = state_dict['current_step']
+        if 'total_steps' in state_dict:
+            self.warmup_steps = state_dict['warmup_steps']
+            self.total_steps = state_dict['total_steps']
+            self.max_lr = state_dict['max_lr']
+            self.min_lr = state_dict['min_lr']
