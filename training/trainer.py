@@ -104,7 +104,7 @@ class Trainer:
             if batch_idx % 100 == 0:
                 current_lr = self.optimizer.param_groups[0]['lr']
                 print(f"Epoch {epoch}, Step {batch_idx}: "
-                      f"Loss={loss_value.item() * self.accumulation_steps:.4f}, LR={current_lr:.6f}")
+                      f"Loss={loss_value.item() * self.accumulation_steps:.4f}, LR={current_lr:.8f}")
 
             if batch_idx % 1000 == 0 and batch_idx > 0:
                 checkpoint_path = f'/kaggle/working/checkpoints/step_checkpoint.pt'

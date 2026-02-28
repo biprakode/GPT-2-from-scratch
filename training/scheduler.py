@@ -12,19 +12,19 @@ class CosineAnnealingScheduler(_LRScheduler):
         self.current_step = 0
 
     def get_lr(self):
-        if(self.current_step > self.total_steps):
+        if self.current_step > self.total_steps:
             return self.min_lr
-        elif (self.warmup_steps == 0) :
-            return self.max_lr
 
         if self.current_step < self.warmup_steps:
             ratio = self.current_step / self.warmup_steps
             return self.max_lr * ratio
-        else:
-            steps_into_cosine = self.current_step - self.warmup_steps
-            total_cosine_steps = self.total_steps - self.warmup_steps
-            progress = torch.tensor(steps_into_cosine/total_cosine_steps)
-            return (self.min_lr + 0.5 * (self.max_lr - self.min_lr) * (1 + torch.cos(torch.pi * progress))).item()
+
+        steps_into_cosine = self.current_step - self.warmup_steps
+        total_cosine_steps = self.total_steps - self.warmup_steps
+        if total_cosine_steps == 0:
+            return self.max_lr
+        progress = steps_into_cosine / total_cosine_steps
+        return self.min_lr + 0.5 * (self.max_lr - self.min_lr) * (1 + torch.cos(torch.tensor(torch.pi * progress)).item())
 
     def step(self):
         new_lr = self.get_lr()
